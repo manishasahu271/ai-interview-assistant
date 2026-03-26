@@ -33,8 +33,17 @@ const SKILL_PATTERNS = {
 export async function extractTextFromPDF(buffer) {
   const { extractText } = await import("unpdf");
   const uint8 = new Uint8Array(buffer);
-  const { text } = await extractText(uint8);
-  return text;
+  const result = await extractText(uint8);
+
+  // unpdf can return { text } as either a string or array of page strings.
+  let raw = result.text;
+  if (Array.isArray(raw)) {
+    raw = raw.join("\n");
+  }
+  if (typeof raw !== "string") {
+    raw = String(raw || "");
+  }
+  return raw;
 }
 
 export function extractSkills(text) {
