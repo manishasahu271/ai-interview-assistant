@@ -3,7 +3,7 @@
   <img src="https://img.shields.io/badge/PostgreSQL-Neon-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" />
   <img src="https://img.shields.io/badge/OpenAI-Whisper%20%2B%20GPT-412991?style=for-the-badge&logo=openai&logoColor=white" />
   <img src="https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma&logoColor=white" />
-  <img src="https://img.shields.io/badge/Live-Vercel-000?style=for-the-badge&logo=vercel" />
+  <img src="https://img.shields.io/badge/Vercel-000?style=for-the-badge&logo=vercel" />
 </p>
 
 # InterviewIQ — AI Interview Assistant
