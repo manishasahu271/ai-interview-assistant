@@ -1,107 +1,92 @@
-// NOTE: We intentionally use CommonJS `require('pdf-parse')` (via `createRequire`)
-// because Next/webpack sometimes chokes on the ESM build of pdf-parse/pdfjs-dist.
-import { createRequire } from "module";
+import crypto from "crypto";
 
-const require = createRequire(import.meta.url);
+const SKILL_PATTERNS = {
+  languages: [
+    "javascript", "typescript", "python", "java", "c\\+\\+", "c#",
+    "go", "rust", "ruby", "php", "swift", "kotlin", "scala",
+    "sql", "html", "css", "bash", "shell",
+  ],
+  frameworks: [
+    "react", "next\\.?js", "vue", "angular", "svelte", "express",
+    "fastapi", "django", "flask", "spring boot", "rails",
+    "node\\.?js", "nest\\.?js", "remix", "gatsby", "nuxt",
+  ],
+  databases: [
+    "postgresql", "postgres", "mysql", "mongodb", "redis",
+    "dynamodb", "cassandra", "elasticsearch", "sqlite", "neo4j",
+    "supabase", "firebase", "prisma", "drizzle",
+  ],
+  cloud: [
+    "aws", "gcp", "azure", "vercel", "netlify", "heroku",
+    "docker", "kubernetes", "k8s", "terraform",
+    "github actions", "jenkins", "circleci",
+  ],
+  concepts: [
+    "machine learning", "deep learning", "nlp", "computer vision",
+    "microservices", "rest api", "graphql", "grpc", "websocket",
+    "system design", "distributed systems", "data structures",
+    "algorithms", "agile", "scrum", "tdd",
+    "oauth", "jwt", "authentication", "authorization",
+  ],
+};
 
-const COMMON_SKILLS = [
-  "javascript",
-  "typescript",
-  "react",
-  "next.js",
-  "node.js",
-  "express",
-  "postgresql",
-  "mysql",
-  "mongodb",
-  "redis",
-  "prisma",
-  "docker",
-  "kubernetes",
-  "aws",
-  "gcp",
-  "azure",
-  "graphql",
-  "rest",
-  "jest",
-  "cypress",
-  "playwright",
-  "python",
-  "java",
-  "go",
-  "rust",
-  "system design",
-  "microservices",
-  "ci/cd",
-];
-
-function normalizeText(s) {
-  return (s || "")
-    .replace(/\r/g, "\n")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+export async function extractTextFromPDF(buffer) {
+  const { extractText } = await import("unpdf");
+  const uint8 = new Uint8Array(buffer);
+  const { text } = await extractText(uint8);
+  return text;
 }
 
-export function extractSkills(rawText) {
-  const text = (rawText || "").toLowerCase();
-  const hits = new Set();
+export function extractSkills(text) {
+  const normalized = text.toLowerCase();
+  const found = new Set();
 
-  for (const skill of COMMON_SKILLS) {
-    const needle = skill.toLowerCase();
-    if (needle.includes(".")) {
-      // handle next.js/node.js as plain substring
-      if (text.includes(needle)) hits.add(skill);
-      continue;
+  for (const [, patterns] of Object.entries(SKILL_PATTERNS)) {
+    for (const pattern of patterns) {
+      const regex = new RegExp(`\\b${pattern}\\b`, "gi");
+      if (regex.test(normalized)) {
+        const clean = pattern
+          .replace(/\\\+/g, "+")
+          .replace(/\\\./g, ".")
+          .replace(/\\b/g, "")
+          .replace(/\\.\\?/g, ".");
+        found.add(clean);
+      }
     }
-    const re = new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-    if (re.test(text)) hits.add(skill);
   }
 
-  // Lightweight extractions: "Skills: A, B, C"
-  const skillsSection = rawText.match(/skills\s*[:\-]\s*([\s\S]{0,500})/i)?.[1] ?? "";
-  for (const token of skillsSection.split(/[,•|/]\s*/g)) {
-    const t = token.trim();
-    if (t.length >= 2 && t.length <= 32) hits.add(t);
-  }
-
-  return Array.from(hits)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, 50);
+  return Array.from(found).sort();
 }
 
-export async function parsePdfToText(buffer) {
-  const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
-  const mod = require("pdf-parse");
-  const PDFParse = mod.PDFParse;
-  // In Next.js, bundlers can break pdf-parse's internal worker loading.
-  // Configure the worker explicitly to a stable CDN URL.
-  if (PDFParse && typeof PDFParse.setWorker === "function") {
-    const key = "__pdfparse_worker_set__";
-    if (!globalThis[key]) {
-      const path = require("path");
-      const { pathToFileURL } = require("url");
-      const workerPath = path.join(
-        process.cwd(),
-        "node_modules/pdf-parse/dist/pdf-parse/web/pdf.worker.mjs",
-      );
-      const workerUrl = pathToFileURL(workerPath).toString();
-      PDFParse.setWorker(
-        // Use a local absolute path so Next/webpack doesn't have to resolve
-        // relative worker modules at runtime.
-        workerUrl,
-      );
-      globalThis[key] = true;
+export function hashQuestion(text) {
+  return crypto.createHash("sha256").update(text.trim().toLowerCase()).digest("hex");
+}
+
+export function estimateExperience(text) {
+  const yearPattern = /(\d{4})\s*[-–—to]+\s*(\d{4}|present|current)/gi;
+  let totalMonths = 0;
+  let match;
+
+  while ((match = yearPattern.exec(text)) !== null) {
+    const start = parseInt(match[1]);
+    const end =
+      match[2].toLowerCase() === "present" || match[2].toLowerCase() === "current"
+        ? new Date().getFullYear()
+        : parseInt(match[2]);
+    if (end >= start && start > 1990 && end <= new Date().getFullYear() + 1) {
+      totalMonths += (end - start) * 12;
     }
   }
-  const parser = new PDFParse({ data: buf });
-  try {
-    const result = await parser.getText();
-    return normalizeText(result.text || "");
-  } finally {
-    // pdf-parse v2 exposes destroy() for cleanup
-    if (typeof parser.destroy === "function") parser.destroy();
-  }
+
+  return Math.round(totalMonths / 12);
+}
+
+export function buildResumeContext(rawText, skills) {
+  const yoe = estimateExperience(rawText);
+  return [
+    `Candidate Skills: ${skills.join(", ")}`,
+    `Estimated Experience: ~${yoe} years`,
+    `Resume Summary (first 1500 chars): ${rawText.slice(0, 1500)}`,
+  ].join("\n");
 }
 
